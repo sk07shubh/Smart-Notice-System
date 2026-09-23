@@ -4,7 +4,7 @@ import { NoticeFeedTable } from '../components/dashboard/NoticeFeedTable';
 import { RecentUpdatesWidget } from '../components/dashboard/RecentUpdatesWidget';
 import { FeaturedEvents } from '../components/dashboard/FeaturedEvents';
 import { matchesNavCategory } from '../types/notice';
-import type { Notice } from '../types/notice';
+import type { Notice, RecentUpdate } from '../types/notice';
 
 interface DashboardViewProps {
   notices: Notice[];
@@ -14,6 +14,7 @@ interface DashboardViewProps {
   onRefreshData: () => void;
   searchTerm?: string;
   onClearSearch?: () => void;
+  recentUpdates: RecentUpdate[];
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -24,6 +25,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onRefreshData,
   searchTerm = '',
   onClearSearch,
+  recentUpdates,
 }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState(false);
@@ -157,6 +159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-4 flex flex-col gap-5 min-w-0">
           {/* Top Quick Actions (Docs | Help) & Recent Updates */}
           <RecentUpdatesWidget
+            updates={recentUpdates}
             onSelectNotice={onSelectNotice}
           />
 

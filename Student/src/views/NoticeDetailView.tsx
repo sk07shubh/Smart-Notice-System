@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { Notice, Attachment } from '../types/notice';
 import { AttachmentModal } from '../components/notices/AttachmentModal';
+import { downloadAttachment } from '../utils/attachments';
 
 interface NoticeDetailViewProps {
   notice: Notice;
@@ -221,7 +222,11 @@ export const NoticeDetailView: React.FC<NoticeDetailViewProps> = ({
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => alert(`Downloading ${att.name}...`)}
+                          onClick={() => {
+                            if (!downloadAttachment(att)) {
+                              alert('This attachment does not have a downloadable file URL.');
+                            }
+                          }}
                           className="w-8 h-8 flex items-center justify-center rounded text-[#003c84] hover:bg-[#003c84]/10 transition-colors"
                           title="Download Document"
                         >

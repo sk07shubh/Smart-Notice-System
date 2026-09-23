@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+  notices   Notice[] @relation("PostedBy")
+}
+
+enum Role {
+  ADMIN
+  FACULTY
+  STUDENT
+}
+
+model Notice {
+  id          String       @id @default(uuid())
+  title       String
+  description String
+  category    Category     @relation(fields: [categoryId], references: [id])
+  categoryId  String
+  attachments Attachment[]
+  banners     Banner[]
+  postedBy    User         @relation("PostedBy", fields: [postedById], references: [id])
+  postedById  String
+  isPinned    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([categoryId])
+  @@index([createdAt])
+}
+
+enum BannerType {
+  ERROR
+  WARNING
+  INFO
+}
+
+enum BannerStatus {
+  OPEN
+  CLOSING_SOON
+  CLOSED
+}
+
+model Banner {
+  id               String       @id @default(uuid())
+  title            String
+  tag              String       @default("ANNOUNCEMENT")
+  image            String?
+  shortDescription String?
+  registrationUrl  String?
+  actionText       String?
+  deadlineText     String?
+  dateLabel        String?
+  type             BannerType   @default(INFO)
+  startAt          DateTime?
+  expiresAt        DateTime?
+  venue            String?
+  isFeatured       Boolean      @default(true)
+  status           BannerStatus @default(OPEN)
+  isActive         Boolean      @default(true)
+  notice           Notice?      @relation(fields: [noticeId], references: [id], onDelete: SetNull)
+  noticeId         String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([isActive, expiresAt])
+  @@index([noticeId])
+  @@index([createdAt])
+}
+
+model Category {
+  id      String   @id @default(uuid())
+  name    String   @unique
+  notices Notice[]
+}
+
+model Attachment {
+  id       String  @id @default(uuid())
+  url      String
+  fileName String
+  fileSize Int?
+  mimeType String?
+  notice   Notice? @relation(fields: [noticeId], references: [id])
+  noticeId String?
+}
+
+model Subscriber {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}

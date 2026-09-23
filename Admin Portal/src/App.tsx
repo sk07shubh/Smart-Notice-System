@@ -3,29 +3,42 @@ import { AdminSidebar } from './components/AdminSidebar';
 import { AdminHeader } from './components/AdminHeader';
 import { AdminNoticeWorkbench } from './views/AdminNoticeWorkbench';
 import { AdminBannerManager } from './views/AdminBannerManager';
+import { LoginScreen, type AdminSession } from './components/LoginScreen';
+import { api } from './api';
 
 export const App: React.FC = () => {
+  const [session, setSession] = useState<AdminSession | null>(() => {
+    try { return JSON.parse(localStorage.getItem('icem-admin-session') || 'null'); } catch { return null; }
+  });
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [currentTab, setCurrentTab] = useState<string>('manage-notices');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Hash-based routing for admin sections
+  const logout = useCallback(() => { localStorage.removeItem('icem-admin-session'); setSession(null); }, []);
+  useEffect(() => { window.addEventListener('admin-auth-expired', logout); return () => window.removeEventListener('admin-auth-expired', logout); }, [logout]);
+  useEffect(() => {
+    if (!session?.token) { setSessionChecked(true); return; }
+    setSessionChecked(false);
+    void api('/auth/me', {}, session.token).then(() => setSessionChecked(true)).catch(logout);
+  }, [session?.token, logout]);
+  const login = (next: AdminSession) => { localStorage.setItem('icem-admin-session', JSON.stringify(next)); setSessionChecked(false); setSession(next); };
+
+  // Keep hooks unconditional: authentication may change between renders.
   const parseRoute = useCallback(() => {
     const rawHash = window.location.hash.replace(/^#\/?/, '').trim();
-    if (!rawHash || rawHash === 'dashboard' || rawHash === 'admin-dashboard' || rawHash === 'manage-notices' || rawHash === 'admin' || rawHash === 'admin/manage-notices') {
-      return 'dashboard';
-    }
+    if (!rawHash || rawHash === 'dashboard' || rawHash === 'admin-dashboard' || rawHash === 'manage-notices' || rawHash === 'admin' || rawHash === 'admin/manage-notices') return 'dashboard';
     return rawHash;
   }, []);
-
   useEffect(() => {
-    const handleHashChange = () => {
-      setCurrentTab(parseRoute());
-    };
+    const handleHashChange = () => setCurrentTab(parseRoute());
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [parseRoute]);
+
+  if (session?.token && !sessionChecked) return <div className="min-h-screen bg-[#f5f7fa] flex items-center justify-center text-sm text-[#5c6470]">Validating session…</div>;
+  if (!session?.token || !session.user || !['ADMIN', 'FACULTY'].includes(session.user.role)) return <LoginScreen onLogin={login} />;
 
   const handleNavigateTab = (tab: string) => {
     setCurrentTab(tab);
@@ -41,7 +54,9 @@ export const App: React.FC = () => {
         onNavigateTab={handleNavigateTab}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        totalNoticesCount={24}
+        totalNoticesCount={undefined}
+        user={session.user}
+        onLogout={logout}
       />
 
       {/* Top App Bar Header */}
@@ -55,12 +70,14 @@ export const App: React.FC = () => {
       <main className="relative pt-16 min-h-screen bg-[#f5f7fa] lg:ml-64 flex flex-col flex-1 px-4 sm:px-6 lg:px-8 py-6 overflow-x-hidden">
         {currentTab === 'dashboard' || currentTab === 'manage-notices' || currentTab === 'create-notice' ? (
           <AdminNoticeWorkbench
+            token={session.token}
             initialSearch={searchTerm}
             currentTab={currentTab}
             onNavigateTab={handleNavigateTab}
           />
         ) : currentTab === 'manage-banner' || currentTab === 'dashboard-banner' || currentTab === 'banner' ? (
           <AdminBannerManager
+            token={session.token}
             onNavigateTab={handleNavigateTab}
           />
         ) : (

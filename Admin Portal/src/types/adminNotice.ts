@@ -1,6 +1,7 @@
 export type NoticeStatus = 'Published' | 'Archived' | 'Draft';
 
 export interface AdminAttachment {
+  id?: string;
   name: string;
   size: string;
   type: 'pdf' | 'excel' | 'image' | 'doc';

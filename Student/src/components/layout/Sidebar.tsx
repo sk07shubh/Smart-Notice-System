@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
+import { api } from '../../api';
 
 interface SidebarProps {
   currentView: string;
@@ -39,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleBrandClick = () => {
     onNavigate('dashboard');
@@ -62,15 +64,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return '';
   };
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     const error = validateEmail(email);
     if (error) {
       setEmailError(error);
       return;
     }
+    setIsLoading(true);
     setEmailError('');
-    setIsSubscribed(true);
+    try {
+      const result = await api<{ message: string }>('/subscribers', { method: 'POST', body: JSON.stringify({ email: email.trim() }) });
+      console.info('[Student subscribe]', result);
+      setIsSubscribed(true);
+      setEmail('');
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally { setIsLoading(false); }
   };
 
   const isNoticesView = currentView === 'dashboard' || currentView === 'notices' || currentView === 'notice-detail';
@@ -231,9 +241,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                   <button
                     type="submit"
+                    disabled={isLoading}
                     className="w-full py-1.5 px-3 bg-[#003c84] hover:bg-[#00275a] text-white text-xs font-semibold rounded-sm transition-colors cursor-pointer text-center shadow-2xs"
                   >
-                    Subscribe
+                    {isLoading ? 'Subscribing…' : 'Subscribe'}
                   </button>
                 </form>
               )}

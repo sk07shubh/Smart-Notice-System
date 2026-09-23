@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, Menu, X, ArrowRight } from 'lucide-react';
+import { Search, Bell, Menu, X, ArrowRight, LogIn } from 'lucide-react';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -7,6 +7,15 @@ interface HeaderProps {
   onSearchChange: (value: string) => void;
   onSearchSubmit?: () => void;
   onNavigateNotice?: (id: string) => void;
+  notifications: HeaderNotification[];
+}
+
+export interface HeaderNotification {
+  id: string;
+  title: string;
+  time: string;
+  noticeId: string;
+  unread: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,32 +24,9 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   onSearchSubmit,
   onNavigateNotice,
+  notifications,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
-
-  const notifications = [
-    {
-      id: 'notif-1',
-      title: 'TCS Placement Drive deadline in 24 hours',
-      time: '2 hours ago',
-      noticeId: 'notice-1',
-      unread: true,
-    },
-    {
-      id: 'notif-2',
-      title: 'Revised Examination Timetable published',
-      time: '5 hours ago',
-      noticeId: 'notice-2',
-      unread: true,
-    },
-    {
-      id: 'notif-3',
-      title: 'Mandatory Anti-Ragging Affidavit Submission',
-      time: '1 day ago',
-      noticeId: 'notice-3',
-      unread: false,
-    },
-  ];
 
   return (
     <header className="fixed top-0 left-0 lg:left-72 right-0 h-14 bg-white/95 backdrop-blur-sm z-30 px-3 sm:px-4 flex items-center justify-between border-b border-[#e2e6ec] shadow-xs">
@@ -85,13 +71,24 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Notifications & Institutional Label (No Student Login / Avatar) */}
+      {/* Right: Admin access, notifications & institutional label */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Institutional Portal Label */}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#00275a]/5 border border-[#00275a]/10 rounded-sm text-xs font-semibold text-[#00275a]">
           <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           <span>ICEM Notice Portal</span>
         </div>
+
+        <button
+          onClick={() => {
+            window.location.href = import.meta.env.VITE_ADMIN_PORTAL_URL;
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#003c84] hover:bg-[#00275a] text-white text-xs font-semibold rounded-sm transition-colors cursor-pointer shadow-2xs"
+          aria-label="Open Admin Portal"
+        >
+          <LogIn className="w-3.5 h-3.5" />
+          <span>Admin Login</span>
+        </button>
 
         {/* Notification Bell with Dropdown */}
         <div className="relative">
@@ -101,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="View notifications"
           >
             <Bell className="w-[19px] h-[19px]" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#ef4444] rounded-full ring-2 ring-white"></span>
+            {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#ef4444] rounded-full ring-2 ring-white"></span>}
           </button>
 
           {showNotifications && (
@@ -111,7 +108,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="text-[11px] text-[#00696c] font-medium hover:underline cursor-pointer">Official Circulars</span>
               </div>
               <div className="divide-y divide-[#e2e6ec] max-h-72 overflow-y-auto">
-                {notifications.map((n) => (
+                {notifications.length === 0 ? (
+                  <p className="p-4 text-center text-xs text-[#5c6470]">No live notices available yet.</p>
+                ) : notifications.map((n) => (
                   <div
                     key={n.id}
                     onClick={() => {
@@ -130,17 +129,17 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 ))}
               </div>
-              <div className="p-2 border-t border-[#e2e6ec] text-center bg-[#fcf9f8]">
+              {notifications[0] && <div className="p-2 border-t border-[#e2e6ec] text-center bg-[#fcf9f8]">
                 <button 
                   onClick={() => {
-                    if (onNavigateNotice) onNavigateNotice('notice-1');
+                    if (onNavigateNotice) onNavigateNotice(notifications[0].noticeId);
                     setShowNotifications(false);
                   }}
                   className="text-xs text-[#003c84] font-semibold hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
                 >
                   View in Notice Feed <ArrowRight className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              </div>}
             </div>
           )}
         </div>

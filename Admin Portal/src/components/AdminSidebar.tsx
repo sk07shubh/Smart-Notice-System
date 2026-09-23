@@ -7,6 +7,8 @@ interface AdminSidebarProps {
   onClose: () => void;
   onSwitchToStudentPortal?: () => void;
   totalNoticesCount?: number;
+  user?: { name: string; role: string };
+  onLogout?: () => void;
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
@@ -16,6 +18,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onClose,
   onSwitchToStudentPortal,
   totalNoticesCount = 24,
+  user,
+  onLogout,
 }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
@@ -126,7 +130,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <div className="absolute bottom-full left-3 right-3 mb-2 bg-white shadow-xl rounded-lg py-2 flex flex-col z-50 border border-[#e2e6ec] animate-in fade-in slide-in-from-bottom-2 duration-150">
               <div className="px-3.5 py-2 bg-[#f6f3f2] border-b border-[#e2e6ec]/60">
                 <span className="text-xs font-bold text-[#00275a] uppercase tracking-wider block">Admin Account</span>
-                <span className="text-xs text-[#5c6470] block truncate">admin.tpo@icem.ac.in</span>
+                <span className="text-xs text-[#5c6470] block truncate">{user?.role || 'Administrator'}</span>
               </div>
               <button
                 onClick={() => setProfileMenuOpen(false)}
@@ -148,7 +152,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 </button>
               )}
               <button
-                onClick={() => setProfileMenuOpen(false)}
+                onClick={() => { setProfileMenuOpen(false); onLogout?.(); }}
                 className="px-3.5 py-2 text-[#ef4444] hover:bg-[#ffdad6] flex items-center gap-2 text-xs text-left w-full transition-colors border-t border-[#e2e6ec]/60 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">logout</span>
@@ -169,9 +173,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-xs font-bold text-[#1c1b1b] leading-tight truncate">
-                  Prof. S. Kulkarni
+                  {user?.name || 'Administrator'}
                 </span>
-                <span className="text-[10px] text-[#5c6470] truncate">Admin / TPO</span>
+                <span className="text-[10px] text-[#5c6470] truncate">{user?.role || 'Administrator'}</span>
               </div>
             </div>
             <span className="material-symbols-outlined text-[#737782] text-[18px] shrink-0">

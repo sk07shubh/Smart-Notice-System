@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, Menu, X, ArrowRight } from 'lucide-react';
+import { Search, Bell, Menu, X, ArrowRight, UserCircle, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -7,6 +7,11 @@ interface HeaderProps {
   onSearchChange: (value: string) => void;
   onSearchSubmit?: () => void;
   onNavigateNotice?: (id: string) => void;
+  user?: { id: string; name: string; role: string } | null;
+  onLoginClick?: () => void;
+  onLogoutClick?: () => void;
+  // New notice button click handler
+  onNewNoticeClick?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +20,10 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   onSearchSubmit,
   onNavigateNotice,
+  user,
+  onLoginClick,
+  onLogoutClick,
+  onNewNoticeClick,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -85,15 +94,24 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Notifications & Institutional Label (No Student Login / Avatar) */}
+      {/* Right: Notifications & Institutional Label */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        {/* Institutional Portal Label */}
+        {user && (user.role === 'ADMIN' || user.role === 'FACULTY') && (
+          <button
+            id="btn-new-notice"
+            onClick={onNewNoticeClick}
+            className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-[#003c84] text-white rounded-lg hover:bg-[#00275a] active:scale-95 transition-all shadow-sm"
+          >
+            <span className="text-base leading-none">+</span>
+            New Notice
+          </button>
+        )}
+
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#00275a]/5 border border-[#00275a]/10 rounded-sm text-xs font-semibold text-[#00275a]">
           <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           <span>ICEM Notice Portal</span>
         </div>
 
-        {/* Notification Bell with Dropdown */}
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
@@ -144,6 +162,32 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        <div className="h-6 w-[1px] bg-[#e2e6ec]"></div>
+
+        {user ? (
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-sm font-semibold text-[#1c1b1b]">{user.name}</span>
+              <span className="text-[10px] text-[#5c6470]">{user.role}</span>
+            </div>
+            <button
+              onClick={onLogoutClick}
+              className="w-9 h-9 flex items-center justify-center text-[#737782] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-[19px] h-[19px]" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onLoginClick}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#003c84] hover:bg-[#003c84]/10 rounded transition-colors"
+          >
+            <UserCircle className="w-5 h-5" />
+            <span className="hidden sm:inline">Admin Login</span>
+          </button>
+        )}
       </div>
     </header>
   );

@@ -62,15 +62,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return '';
   };
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     const error = validateEmail(email);
     if (error) {
       setEmailError(error);
       return;
     }
+    
+    setIsLoading(true);
     setEmailError('');
-    setIsSubscribed(true);
+    
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/subscribers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to subscribe');
+      }
+      
+      setIsSubscribed(true);
+      setEmail('');
+    } catch (err: any) {
+      setEmailError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const isNoticesView = currentView === 'dashboard' || currentView === 'notices' || currentView === 'notice-detail';
@@ -231,9 +254,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                   <button
                     type="submit"
-                    className="w-full py-1.5 px-3 bg-[#003c84] hover:bg-[#00275a] text-white text-xs font-semibold rounded-sm transition-colors cursor-pointer text-center shadow-2xs"
+                    disabled={isLoading}
+                    className="w-full py-1.5 px-3 bg-[#003c84] hover:bg-[#00275a] text-white text-xs font-semibold rounded-sm transition-colors cursor-pointer text-center shadow-2xs disabled:opacity-50"
                   >
-                    Subscribe
+                    {isLoading ? 'Subscribing...' : 'Subscribe'}
                   </button>
                 </form>
               )}

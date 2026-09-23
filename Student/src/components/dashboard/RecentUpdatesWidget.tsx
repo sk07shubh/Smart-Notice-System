@@ -6,7 +6,6 @@ import {
   Clock
 } from 'lucide-react';
 import type { RecentUpdate } from '../../types/notice';
-import { mockRecentUpdates } from '../../data/mockNotices';
 import { DocsModal } from '../modals/DocsModal';
 import { HelpModal } from '../modals/HelpModal';
 
@@ -16,7 +15,7 @@ interface RecentUpdatesWidgetProps {
 }
 
 export const RecentUpdatesWidget: React.FC<RecentUpdatesWidgetProps> = ({
-  updates = mockRecentUpdates,
+  updates = [],
   onSelectNotice,
 }) => {
   const [showDocsModal, setShowDocsModal] = useState(false);
@@ -67,6 +66,7 @@ export const RecentUpdatesWidget: React.FC<RecentUpdatesWidgetProps> = ({
 
         {/* List of Updates */}
         <ul className="flex flex-col divide-y divide-[#e2e6ec]">
+          {updates.length === 0 && <li className="p-4 text-xs text-[#5c6470]">No live notice updates available.</li>}
           {updates.map((update) => (
             <li
               key={update.id}

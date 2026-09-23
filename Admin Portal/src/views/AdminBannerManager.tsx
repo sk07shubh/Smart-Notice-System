@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { DashboardBanner } from '../types/adminBanner';
 import { sampleBannerPresets } from '../types/adminBanner';
-import {
-  getStoredBanners,
-  saveStoredBanners,
-  toggleBannerStatus,
-  deleteStoredBanner,
-  resetToDefaultBanners,
-} from '../utils/bannerStorage';
+import { api } from '../api';
 
 interface AdminBannerManagerProps {
+  token: string;
   onNavigateTab?: (tab: string) => void;
 }
 
@@ -30,36 +25,36 @@ const emptyBannerState: Partial<DashboardBanner> = {
 };
 
 export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
+  token,
   onNavigateTab,
 }) => {
   const [banners, setBanners] = useState<DashboardBanner[]>([]);
   const [formData, setFormData] = useState<Partial<DashboardBanner>>(emptyBannerState);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'preset' | 'url' | 'upload'>('preset');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formSectionRef = useRef<HTMLDivElement>(null);
 
-  // Load banners on mount and listen to updates
+  const toDashboardBanner = (banner: any): DashboardBanner => ({
+    ...banner,
+    startDate: banner.startAt ? new Date(banner.startAt).toISOString().slice(0, 10) : '',
+    endDate: banner.expiresAt ? new Date(banner.expiresAt).toISOString().slice(0, 10) : '',
+    status: (banner.status || 'OPEN').toLowerCase().replace('_', '-') as DashboardBanner['status'],
+  });
+  const loadBanners = async () => {
+    setLoading(true); setRequestError(null);
+    try { const result = await api<{ data: any[] }>('/banners', {}, token); setBanners((result.data || []).map(toDashboardBanner)); }
+    catch (err) { setRequestError(err instanceof Error ? err.message : 'Unable to load banners.'); }
+    finally { setLoading(false); }
+  };
+  // GET /banners returns active, unexpired records from the backend.
   useEffect(() => {
-    setBanners(getStoredBanners());
-
-    const handleBannerUpdate = (e: any) => {
-      if (e.detail) {
-        setBanners(e.detail);
-      } else {
-        setBanners(getStoredBanners());
-      }
-    };
-
-    window.addEventListener('icem-banner-update', handleBannerUpdate);
-    window.addEventListener('storage', handleBannerUpdate);
-
-    return () => {
-      window.removeEventListener('icem-banner-update', handleBannerUpdate);
-      window.removeEventListener('storage', handleBannerUpdate);
-    };
-  }, []);
+    void loadBanners();
+  }, [token]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -87,7 +82,8 @@ export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
 
   // Handle Status Toggle (1-click activate/deactivate)
   const handleToggle = (id: string, currentStatus: boolean, title: string) => {
-    const updated = toggleBannerStatus(id);
+    void api(`/banners/${id}`, { method: 'PUT', body: JSON.stringify({ isActive: !currentStatus }) }, token).catch(err => setRequestError(err instanceof Error ? err.message : 'Unable to update banner.'));
+    const updated = banners.map(banner => banner.id === id ? { ...banner, isActive: !currentStatus } : banner);
     setBanners(updated);
     showToast(
       currentStatus
@@ -99,7 +95,8 @@ export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
   // Handle Delete Banner
   const handleDelete = (id: string, title: string) => {
     if (window.confirm(`Are you sure you want to delete banner "${title}"?`)) {
-      const updated = deleteStoredBanner(id);
+      void api(`/banners/${id}`, { method: 'DELETE' }, token).catch(err => setRequestError(err instanceof Error ? err.message : 'Unable to delete banner.'));
+      const updated = banners.filter(banner => banner.id !== id);
       setBanners(updated);
       if (editingId === id) {
         handleCancelEdit();
@@ -110,16 +107,7 @@ export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
 
   // Handle Reset to Defaults
   const handleResetDefaults = () => {
-    if (
-      window.confirm(
-        'Reset all banners to institutional default cards (Hackathon 24, AI Workshop, Tech Fest)?'
-      )
-    ) {
-      const defaults = resetToDefaultBanners();
-      setBanners(defaults);
-      handleCancelEdit();
-      showToast('Reset banners to default institutional events.');
-    }
+    showToast('Resetting mock banners is unavailable when using the live API.');
   };
 
   // Handle File Upload to Base64 Data URL
@@ -137,14 +125,10 @@ export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setFormData((prev) => ({ ...prev, image: reader.result as string }));
-        showToast('Image uploaded successfully.');
-      }
-    };
-    reader.readAsDataURL(file);
+    const form = new FormData(); form.append('file', file);
+    void api<{ data: { url: string } }>('/upload', { method: 'POST', body: form }, token)
+      .then(result => { setFormData(prev => ({ ...prev, image: result.data.url })); showToast('Image uploaded successfully.'); })
+      .catch(err => setRequestError(err instanceof Error ? err.message : 'Unable to upload image.'));
   };
 
   // Handle Form Submit (Save / Update Banner)
@@ -161,45 +145,32 @@ export const AdminBannerManager: React.FC<AdminBannerManagerProps> = ({
       return;
     }
 
-    const bannerToSave: DashboardBanner = {
-      id: editingId || `banner-${Date.now()}`,
+    const bannerToSave = {
       title: formData.title.trim(),
       tag: (formData.tag?.trim() || 'ANNOUNCEMENT').toUpperCase(),
       image: formData.image.trim(),
       shortDescription: formData.shortDescription?.trim() || 'Institutional announcement for ICEM students.',
-      registrationUrl: formData.registrationUrl?.trim() || '',
+      registrationUrl: formData.registrationUrl?.trim() || undefined,
       actionText: formData.actionText?.trim() || 'Register',
       deadlineText: formData.deadlineText?.trim() || 'Registration Open',
-      startDate: formData.startDate?.trim() || undefined,
-      endDate: formData.endDate?.trim() || undefined,
+      startAt: formData.startDate?.trim() ? new Date(formData.startDate).toISOString() : undefined,
+      expiresAt: formData.endDate?.trim() ? new Date(formData.endDate).toISOString() : undefined,
       venue: formData.venue?.trim() || undefined,
-      isFeatured: true,
-      status: (formData.status as any) || 'open',
+      isFeatured: formData.isFeatured !== false,
+      status: ((formData.status || 'open').toUpperCase().replace('-', '_')) as 'OPEN' | 'CLOSING_SOON' | 'CLOSED',
       isActive: formData.isActive !== false,
-      updatedAt: new Date().toISOString(),
-      createdAt: formData.createdAt || new Date().toISOString(),
     };
 
-    let updatedList: DashboardBanner[];
-    if (editingId) {
-      updatedList = banners.map((b) => (b.id === editingId ? bannerToSave : b));
-      showToast(`Updated "${bannerToSave.title}" successfully.`);
-    } else {
-      updatedList = [bannerToSave, ...banners];
-      showToast(
-        bannerToSave.isActive
-          ? `Created and published "${bannerToSave.title}" to Student Dashboard.`
-          : `Created "${bannerToSave.title}" as draft.`
-      );
-    }
-
-    saveStoredBanners(updatedList);
-    setBanners(updatedList);
-    handleCancelEdit();
+    setIsSaving(true); setRequestError(null);
+    void api<{ data: any }>(editingId ? `/banners/${editingId}` : '/banners', { method: editingId ? 'PUT' : 'POST', body: JSON.stringify(bannerToSave) }, token)
+      .then(result => { const saved = toDashboardBanner(result.data); setBanners(prev => editingId ? prev.map(b => b.id === editingId ? saved : b) : [saved, ...prev]); showToast(`${editingId ? 'Updated' : 'Created'} "${saved.title}" successfully.`); handleCancelEdit(); })
+      .catch(err => setRequestError(err instanceof Error ? err.message : 'Unable to save banner.'))
+      .finally(() => setIsSaving(false));
   };
 
   return (
     <div className="w-full flex flex-col gap-6">
+      {(loading || requestError || isSaving) && <div role={requestError ? 'alert' : 'status'} className={`rounded-lg border p-3 text-sm ${requestError ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>{requestError || (isSaving ? 'Saving banner…' : 'Loading live banners…')}</div>}
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#00275a] text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 border border-[#d8e2ff]/30 animate-in fade-in slide-in-from-bottom-3 duration-200">

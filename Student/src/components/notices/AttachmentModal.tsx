@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Download, FileText, FileSpreadsheet, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import type { Attachment } from '../../types/notice';
+import { downloadAttachment, getAttachmentUrl, openAttachment } from '../../utils/attachments';
 
 interface AttachmentModalProps {
   attachment: Attachment | null;
@@ -14,6 +15,7 @@ export const AttachmentModal: React.FC<AttachmentModalProps> = ({
   onClose,
 }) => {
   if (!attachment) return null;
+  const attachmentUrl = getAttachmentUrl(attachment);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -39,6 +41,16 @@ export const AttachmentModal: React.FC<AttachmentModalProps> = ({
 
         {/* Content Viewer Body */}
         <div className="p-6 flex-1 overflow-y-auto bg-[#f5f7fa] flex flex-col items-center justify-center text-center min-h-[260px]">
+          {attachment.type === 'pdf' && attachmentUrl && (
+            <iframe
+              src={attachmentUrl}
+              title={`Preview of ${attachment.name}`}
+              className="w-full h-[55vh] min-h-[320px] mb-4 rounded border border-[#e2e6ec] bg-white"
+            />
+          )}
+          {attachment.type === 'image' && attachmentUrl && (
+            <img src={attachmentUrl} alt={attachment.name} className="max-h-[55vh] max-w-full object-contain mb-4 rounded border border-[#e2e6ec] bg-white" />
+          )}
           <div className="w-16 h-16 rounded-full bg-white border border-[#e2e6ec] shadow-sm flex items-center justify-center mb-3">
             {attachment.type === 'pdf' && <FileText className="w-8 h-8 text-red-500" />}
             {attachment.type === 'excel' && <FileSpreadsheet className="w-8 h-8 text-emerald-600" />}
@@ -64,7 +76,9 @@ export const AttachmentModal: React.FC<AttachmentModalProps> = ({
           <div className="flex flex-wrap items-center justify-center gap-3 w-full">
             <button
               onClick={() => {
-                alert(`Downloading: ${attachment.name}`);
+                if (!downloadAttachment(attachment)) {
+                  alert('This attachment does not have a downloadable file URL.');
+                }
               }}
               className="px-5 py-2.5 bg-[#003c84] hover:bg-[#43ccd1] text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors flex items-center gap-2 shadow-sm"
             >
@@ -72,7 +86,9 @@ export const AttachmentModal: React.FC<AttachmentModalProps> = ({
             </button>
             <button
               onClick={() => {
-                window.open('#', '_blank');
+                if (!openAttachment(attachment)) {
+                  alert('This attachment does not have a file URL to open.');
+                }
               }}
               className="px-4 py-2.5 bg-white border border-[#e2e6ec] hover:bg-[#f5f7fa] text-[#1c1b1b] text-xs font-semibold rounded-sm transition-colors flex items-center gap-2"
             >

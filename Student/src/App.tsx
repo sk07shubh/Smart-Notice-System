@@ -1,23 +1,40 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { SplashScreen } from './components/layout/SplashScreen';
 import { Sidebar } from './components/layout/Sidebar';
-import { Header } from './components/layout/Header';
+import { Header, type HeaderNotification } from './components/layout/Header';
 import { ActionRequiredBanner } from './components/layout/ActionRequiredBanner';
 import { DashboardView } from './views/DashboardView';
 import { NoticesView } from './views/NoticesView';
 import { NoticeDetailView } from './views/NoticeDetailView';
 import { TimetableView, EventsView } from './views/SecondaryViews';
-import { mockNotices, mockActionItems } from './data/mockNotices';
+import { api } from './api';
+import { mapNotice, type ApiNotice } from './utils/mapNotice';
 import { matchesNavCategory } from './types/notice';
-import type { Notice } from './types/notice';
+import type { Notice, ActionItem, RecentUpdate } from './types/notice';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedNoticeId, setSelectedNoticeId] = useState<string>('notice-1');
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [notices, setNotices] = useState<Notice[]>(mockNotices);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
+  const [noticesError, setNoticesError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const fetchNotices = useCallback(async () => {
+    setNoticesLoading(true); setNoticesError(null);
+    try {
+      const result = await api<{ data: ApiNotice[] }>('/notices?limit=100');
+      // Database IDs are authoritative. Notices with matching copy can still
+      // be separate records with distinct attachments or publication history.
+      setNotices((result.data || []).map(mapNotice));
+    } catch (err) {
+      setNoticesError(err instanceof Error ? err.message : 'Unable to load notices.');
+    } finally { setNoticesLoading(false); }
+  }, []);
+
+  useEffect(() => { void fetchNotices(); }, [fetchNotices]);
 
   // Calculate live counts for the 4 sidebar notice categories
   const categoryCounts = useMemo(() => {
@@ -28,6 +45,24 @@ export const App: React.FC = () => {
       general: notices.filter((n) => matchesNavCategory(n.category, 'general')).length,
     };
   }, [notices]);
+
+  const actionItems = useMemo<ActionItem[]>(() => notices.filter(notice => notice.important || notice.urgent).slice(0, 5).map(notice => ({
+    id: notice.id, noticeId: notice.id, title: notice.title, dateLabel: notice.date,
+    type: notice.urgent ? 'error' : notice.important ? 'warning' : 'info',
+  })), [notices]);
+
+  const recentUpdates = useMemo<RecentUpdate[]>(() => notices.slice(0, 5).map(notice => ({
+    id: notice.id, noticeId: notice.id, title: notice.title, department: notice.category,
+    timeAgo: [notice.date, notice.time].filter(Boolean).join(' · '), isUrgent: Boolean(notice.important || notice.urgent),
+  })), [notices]);
+
+  const headerNotifications = useMemo<HeaderNotification[]>(() => notices.slice(0, 3).map(notice => ({
+    id: notice.id,
+    title: notice.title,
+    time: [notice.date, notice.time].filter(Boolean).join(' · '),
+    noticeId: notice.id,
+    unread: Boolean(notice.important || notice.urgent),
+  })), [notices]);
 
   // Parse URL hash for robust routing & back/forward/refresh support
   const parseRoute = useCallback(() => {
@@ -172,14 +207,20 @@ export const App: React.FC = () => {
         onSearchChange={setSearchTerm}
         onSearchSubmit={handleSearchSubmit}
         onNavigateNotice={handleSelectNotice}
+        notifications={headerNotifications}
       />
 
       {/* Main Content Area */}
       <main className="relative pt-14 min-h-screen bg-[#f5f7fa] lg:pl-72 flex flex-col flex-1 max-w-full overflow-x-hidden">
+        {(noticesLoading || noticesError) && (
+          <div role={noticesError ? 'alert' : 'status'} className={`mx-4 mt-4 rounded border p-3 text-sm ${noticesError ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+            {noticesError || 'Loading notices…'}
+          </div>
+        )}
         {/* Top Action Required Strip */}
         {(currentView === 'dashboard' || currentView === 'notices') && (
           <ActionRequiredBanner
-            items={mockActionItems}
+            items={actionItems}
             onSelectNotice={handleSelectNotice}
           />
         )}
@@ -198,9 +239,10 @@ export const App: React.FC = () => {
                   navigateTo(view);
                 }
               }}
-              onRefreshData={() => setNotices([...mockNotices])}
+              onRefreshData={fetchNotices}
               searchTerm={searchTerm}
               onClearSearch={() => setSearchTerm('')}
+              recentUpdates={recentUpdates}
             />
           )}
 

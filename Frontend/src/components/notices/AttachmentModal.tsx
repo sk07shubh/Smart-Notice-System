@@ -47,32 +47,31 @@ export const AttachmentModal: React.FC<AttachmentModalProps> = ({
           </div>
 
           <h4 className="text-base font-semibold text-[#1c1b1b] mb-1">{attachment.name}</h4>
-          <p className="text-xs text-[#5c6470] mb-4">
-            Size: {attachment.size} • Verified Institutional Document (SPPU/ICEM)
-          </p>
-
-          <div className="bg-white p-4 rounded-lg border border-[#e2e6ec] text-left w-full text-xs text-[#434751] space-y-2 mb-4 shadow-2xs">
-            <p className="font-semibold text-[#00275a] flex items-center justify-between border-b border-[#e2e6ec] pb-1.5">
-              <span>Document Verification Stamp</span>
-              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-bold">DIGITALLY SIGNED</span>
+            <p className="text-xs text-[#5c6470] mb-4">
+              Size: {attachment.size}
             </p>
-            <p className="text-[11px] text-[#5c6470]">
-              Issued by ICEM Academic Operations & Student Affairs Directorate for official student reference.
-            </p>
-          </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3 w-full">
-            <button
+            <button disabled={!attachment.url}
               onClick={() => {
-                alert(`Downloading: ${attachment.name}`);
+                if (attachment.url) {
+                  const link = document.createElement('a');
+                  link.href = attachment.url;
+                  link.download = attachment.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }
               }}
               className="px-5 py-2.5 bg-[#003c84] hover:bg-[#43ccd1] text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors flex items-center gap-2 shadow-sm"
             >
               <Download className="w-4 h-4" /> Download Original ({attachment.size})
             </button>
-            <button
+            <button disabled={!attachment.url}
               onClick={() => {
-                window.open('#', '_blank');
+                if (attachment.url) {
+                  window.open(attachment.url, '_blank');
+                }
               }}
               className="px-4 py-2.5 bg-white border border-[#e2e6ec] hover:bg-[#f5f7fa] text-[#1c1b1b] text-xs font-semibold rounded-sm transition-colors flex items-center gap-2"
             >

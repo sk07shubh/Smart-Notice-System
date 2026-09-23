@@ -7,7 +7,10 @@ import { DashboardView } from './views/DashboardView';
 import { NoticesView } from './views/NoticesView';
 import { NoticeDetailView } from './views/NoticeDetailView';
 import { TimetableView, EventsView } from './views/SecondaryViews';
-import { mockNotices, mockActionItems } from './data/mockNotices';
+import { LoginModal } from './components/modals/LoginModal';
+import { CreateNoticeModal } from './components/modals/CreateNoticeModal';
+import { mockActionItems } from './data/mockNotices';
+import { mapNotice } from './utils/mapNotice';
 import { matchesNavCategory } from './types/notice';
 import type { Notice } from './types/notice';
 
@@ -16,8 +19,59 @@ export const App: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedNoticeId, setSelectedNoticeId] = useState<string>('notice-1');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [notices, setNotices] = useState<Notice[]>(mockNotices);
+  const [notices, setNotices] = useState<Notice[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isCreateNoticeModalOpen, setIsCreateNoticeModalOpen] = useState(false);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [user, setUser] = useState<{ id: string; name: string; role: string } | null>(
+    localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') as string) : null
+  );
+
+  const handleLoginSuccess = (newToken: string, newUser: any) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+    setIsLoginModalOpen(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+  };
+
+  const openCreateNoticeModal = () => setIsCreateNoticeModalOpen(true);
+
+  // Fetch all notices from the real backend and update state
+  const fetchNotices = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/notices?limit=100`
+      );
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.data && Array.isArray(body.data)) {
+        setNotices(body.data.map(mapNotice));
+      }
+    } catch (err) {
+      console.error('[fetchNotices]', err);
+    }
+  }, []);
+
+  // Load notices on mount
+  useEffect(() => {
+    fetchNotices();
+  }, [fetchNotices]);
+
+  // Called when a notice is successfully created — re-fetch the full list
+  const handleCreateNoticeSuccess = async () => {
+    await fetchNotices();
+  };
+
 
   // Calculate live counts for the 4 sidebar notice categories
   const categoryCounts = useMemo(() => {
@@ -175,6 +229,23 @@ export const App: React.FC = () => {
         onSearchChange={setSearchTerm}
         onSearchSubmit={handleSearchSubmit}
         onNavigateNotice={handleSelectNotice}
+        user={user}
+        onLoginClick={() => setIsLoginModalOpen(true)}
+        onLogoutClick={handleLogout}
+        onNewNoticeClick={openCreateNoticeModal}
+      />
+
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
+
+      <CreateNoticeModal
+        isOpen={isCreateNoticeModalOpen}
+        onClose={() => setIsCreateNoticeModalOpen(false)}
+        token={token}
+        onSuccess={handleCreateNoticeSuccess}
       />
 
       {/* Main Content Area */}
@@ -201,7 +272,7 @@ export const App: React.FC = () => {
                   navigateTo(view);
                 }
               }}
-              onRefreshData={() => setNotices([...mockNotices])}
+              onRefreshData={fetchNotices}
               searchTerm={searchTerm}
               onClearSearch={() => setSearchTerm('')}
             />

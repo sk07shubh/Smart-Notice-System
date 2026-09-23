@@ -10,7 +10,6 @@ import {
   ExternalLink 
 } from 'lucide-react';
 import type { CollegeDocument } from '../../types/notice';
-import { mockCollegeDocuments } from '../../data/mockNotices';
 
 interface DocsModalProps {
   isOpen: boolean;
@@ -21,7 +20,7 @@ interface DocsModalProps {
 export const DocsModal: React.FC<DocsModalProps> = ({
   isOpen,
   onClose,
-  documents = mockCollegeDocuments,
+  documents = [],
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
@@ -110,7 +109,7 @@ export const DocsModal: React.FC<DocsModalProps> = ({
         <div className="p-3 space-y-2 overflow-y-auto flex-1 divide-y divide-[#f0eded]">
           {filteredDocs.length === 0 ? (
             <div className="py-8 text-center text-[#5c6470] text-xs">
-              No documents matching your search.
+              No live document library is currently available.
             </div>
           ) : (
             filteredDocs.map((doc) => (

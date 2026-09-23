@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   CheckCircle, 
@@ -10,10 +10,7 @@ import {
   ExternalLink 
 } from 'lucide-react';
 import type { FeaturedEvent } from '../../types/notice';
-import { mockFeaturedEvents } from '../../data/mockNotices';
-
-const BANNER_STORAGE_KEY = 'icem_student_dashboard_banners';
-const BANNER_CHANNEL_NAME = 'icem_banner_sync_channel';
+import { api } from '../../api';
 
 interface FeaturedEventsProps {
   events?: FeaturedEvent[];
@@ -22,91 +19,19 @@ interface FeaturedEventsProps {
 export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({
   events: propEvents,
 }) => {
-  const [liveEvents, setLiveEvents] = useState<FeaturedEvent[]>(() => {
-    if (propEvents && propEvents.length > 0) return propEvents;
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(BANNER_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.filter((e: any) => e.isActive !== false);
-          }
-        }
-      } catch (err) {
-        console.error('Error reading stored banners in Student Portal:', err);
-      }
-    }
-    return mockFeaturedEvents;
-  });
+  const [liveEvents, setLiveEvents] = useState<FeaturedEvent[]>(propEvents || []);
+  const [eventsError, setEventsError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [registeredEvents, setRegisteredEvents] = useState<Record<string, boolean>>({});
 
-  // Sync with Admin Portal banner updates via localStorage & BroadcastChannel
-  const loadActiveBanners = useCallback(() => {
-    if (propEvents && propEvents.length > 0) {
-      setLiveEvents(propEvents);
-      return;
-    }
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(BANNER_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const activeOnly = parsed.filter((e: any) => e.isActive !== false);
-          setLiveEvents(activeOnly);
-          return;
-        }
-      }
-      setLiveEvents(mockFeaturedEvents);
-    } catch (err) {
-      console.error('Error syncing banners in Student Portal:', err);
-      setLiveEvents(mockFeaturedEvents);
-    }
-  }, [propEvents]);
-
   useEffect(() => {
-    loadActiveBanners();
-
-    // 1. Listen for storage events across tabs/windows
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === BANNER_STORAGE_KEY || !e.key) {
-        loadActiveBanners();
-      }
-    };
-
-    // 2. Listen for custom events
-    const handleCustomUpdate = () => {
-      loadActiveBanners();
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('icem-banner-update', handleCustomUpdate);
-
-    // 3. Listen via BroadcastChannel if available
-    let channel: BroadcastChannel | null = null;
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        channel = new BroadcastChannel(BANNER_CHANNEL_NAME);
-        channel.onmessage = () => {
-          loadActiveBanners();
-        };
-      } catch (e) {
-        // BroadcastChannel fallback
-      }
-    }
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('icem-banner-update', handleCustomUpdate);
-      if (channel) {
-        channel.close();
-      }
-    };
-  }, [loadActiveBanners]);
+    if (propEvents) { setLiveEvents(propEvents); return; }
+    void api<{ data: any[] }>('/banners').then(result => {
+      setLiveEvents((result.data || []).map(banner => ({ ...banner, image: banner.image || '', deadlineText: banner.deadlineText || '', startDate: banner.startAt ? new Date(banner.startAt).toLocaleDateString('en-IN') : undefined, endDate: banner.expiresAt ? new Date(banner.expiresAt).toLocaleDateString('en-IN') : undefined, status: (banner.status || 'OPEN').toLowerCase().replace('_', '-') as FeaturedEvent['status'] })));
+    }).catch(err => setEventsError(err instanceof Error ? err.message : 'Unable to load featured events.'));
+  }, [propEvents]);
 
   // If active events list changes, make sure currentIndex remains valid
   useEffect(() => {
@@ -115,6 +40,7 @@ export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({
     }
   }, [liveEvents.length, currentIndex]);
 
+  if (eventsError) return <p role="alert" className="text-xs text-red-700">{eventsError}</p>;
   if (!liveEvents || liveEvents.length === 0) return null;
 
   const currentEvent = liveEvents[currentIndex] || liveEvents[0];

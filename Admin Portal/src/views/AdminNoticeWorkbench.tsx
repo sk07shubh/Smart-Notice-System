@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { AdminNotice, AdminFilterState, NoticeStatus } from '../types/adminNotice';
-import { mockAdminNotices } from '../data/mockAdminNotices';
+import { api } from '../api';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -30,6 +30,7 @@ const formatDateForDisplay = (dateKey: string): string => {
 };
 
 interface AdminNoticeWorkbenchProps {
+  token: string;
   initialSearch?: string;
   currentTab?: string;
   onNavigateTab?: (tab: string) => void;
@@ -55,13 +56,19 @@ const initialCreateNoticeState: Partial<AdminNotice> = {
 };
 
 export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
+  token,
   initialSearch = '',
   currentTab = 'dashboard',
   onNavigateTab,
 }) => {
-  const [notices, setNotices] = useState<AdminNotice[]>(mockAdminNotices);
-  const [selectedNoticeId, setSelectedNoticeId] = useState<string>(mockAdminNotices[0]?.id || '');
-  const [selectedNoticeIds, setSelectedNoticeIds] = useState<string[]>([mockAdminNotices[0]?.id || '']);
+  const [notices, setNotices] = useState<AdminNotice[]>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [categoryId, setCategoryId] = useState('');
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string>('');
+  const [selectedNoticeIds, setSelectedNoticeIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [itemsPerPage, setItemsPerPage] = useState<number>(5);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -86,6 +93,28 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const [calYear, setCalYear] = useState<number>(2023);
   const [calMonth, setCalMonth] = useState<number>(9); // 0-indexed: 9 = October
+
+  const toAdminNotice = (notice: any): AdminNotice => ({
+    id: notice.id, refNo: notice.id.slice(0, 8).toUpperCase(), title: notice.title,
+    category: notice.category?.name || 'General', status: 'Published', summary: notice.description,
+    issuedBy: notice.postedBy?.name || 'Administration', department: notice.category?.name || 'Administration', departmentKey: 'admin',
+    date: new Date(notice.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    time: new Date(notice.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    isImportant: notice.isPinned, targetAudience: 'All students', attachments: (notice.attachments || []).map((a: any) => ({ id: a.id, name: a.fileName || a.name || 'Attachment', size: a.fileSize ? `${Math.round(a.fileSize / 1024)} KB` : '', type: 'pdf', url: a.url }))
+  });
+  const loadData = async () => {
+    setLoading(true); setRequestError(null);
+    try {
+      const [noticeResult, categoryResult] = await Promise.all([
+        api<{ data: any[] }>('/notices?limit=100', {}, token), api<{ data: Array<{ id: string; name: string }> }>('/categories', {}, token)
+      ]);
+      const nextCategories = categoryResult.data || [];
+      setCategories(nextCategories); setNotices((noticeResult.data || []).map(toAdminNotice));
+      setCategoryId(previous => previous || nextCategories[0]?.id || '');
+    } catch (err) { setRequestError(err instanceof Error ? err.message : 'Unable to load notices.'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void loadData(); }, [token]);
 
   // Sync calendar view month/year when selectedDate changes
   useEffect(() => {
@@ -282,26 +311,24 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
 
 
   // Action: Delete Notice
-  const handleDeleteNotice = (id: string) => {
+  const handleDeleteNotice = async (id: string) => {
     if (window.confirm('Are you sure you want to permanently delete this notice?')) {
-      setNotices((prev) => prev.filter((n) => n.id !== id));
-      setSelectedNoticeIds((prev) => prev.filter((item) => item !== id));
-      showToast('Notice deleted successfully.');
+      try { await api(`/notices/${id}`, { method: 'DELETE' }, token); setNotices((prev) => prev.filter((n) => n.id !== id)); setSelectedNoticeIds((prev) => prev.filter((item) => item !== id)); showToast('Notice deleted successfully.'); }
+      catch (err) { setRequestError(err instanceof Error ? err.message : 'Unable to delete notice.'); }
     }
   };
 
   // Action: Archive Notice
-  const handleArchiveNotice = (id: string) => {
-    setNotices((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, status: 'Archived' as NoticeStatus } : n))
-    );
-    showToast('Notice archived successfully.');
+  const handleArchiveNotice = (_id: string) => {
+    showToast('Archiving is not supported by the backend notice API.');
   };
 
 
   // Action: Open Edit Notice in full page form
   const handleOpenEdit = (notice: AdminNotice) => {
     setEditingNoticeId(notice.id);
+    const matchingCategory = categories.find(category => category.name === notice.category);
+    setCategoryId(matchingCategory?.id || '');
     setCreateNoticeData({
       id: notice.id,
       refNo: notice.refNo,
@@ -331,86 +358,33 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
   };
 
   // Dedicated Full-Page Create/Edit Notice Save Handler
-  const handleSaveCreate = (e: React.FormEvent, customStatus?: NoticeStatus) => {
+  const handleSaveCreate = async (e: React.FormEvent, _customStatus?: NoticeStatus) => {
     e.preventDefault();
     if (!createNoticeData.title || !createNoticeData.title.trim()) {
       showToast('Please enter a notice title.');
       return;
     }
-    const statusToSet: NoticeStatus = customStatus || (createNoticeData.status as NoticeStatus) || 'Published';
-
-    if (editingNoticeId) {
-      // Update existing notice
-      setNotices((prev) =>
-        prev.map((n) => {
-          if (n.id === editingNoticeId) {
-            return {
-              ...n,
-              title: createNoticeData.title!.trim(),
-              category: (createNoticeData.category as any) || n.category,
-              status: statusToSet,
-              summary: createNoticeData.summary?.trim() || '',
-              issuedBy: createNoticeData.issuedBy?.trim() || n.issuedBy,
-              department: createNoticeData.department || n.department,
-              departmentKey: (createNoticeData.departmentKey as any) || n.departmentKey,
-              targetAudience: createNoticeData.targetAudience?.trim() || n.targetAudience,
-              academicYear: createNoticeData.academicYear || n.academicYear,
-              isImportant: createNoticeData.isImportant !== undefined ? createNoticeData.isImportant : n.isImportant,
-              isUrgent: createNoticeData.isUrgent !== undefined ? createNoticeData.isUrgent : n.isUrgent,
-              actionRequired: createNoticeData.actionRequired !== undefined ? createNoticeData.actionRequired : n.actionRequired,
-              actionDeadline: createNoticeData.actionDeadline?.trim() || undefined,
-              actionDescription: createNoticeData.actionDescription?.trim() || undefined,
-              attachments: createNoticeData.attachments ? [...createNoticeData.attachments] : [],
-            };
-          }
-          return n;
-        })
-      );
-      setSelectedNoticeId(editingNoticeId);
-      setEditingNoticeId(null);
-      setCreateNoticeData(initialCreateNoticeState);
-      showToast(
-        statusToSet === 'Draft'
-          ? 'Notice updated and saved as draft.'
-          : 'Notice updated successfully.'
-      );
-    } else {
-      // Create new notice
-      const newNotice: AdminNotice = {
-        id: `admin-notice-${Date.now()}`,
-        refNo:
-          createNoticeData.refNo?.trim() ||
-          `REF-${new Date().getFullYear()}-${
-            createNoticeData.departmentKey ? createNoticeData.departmentKey.toUpperCase() : 'GEN'
-          }-${Math.floor(Math.random() * 900 + 100)}`,
-        title: createNoticeData.title.trim(),
-        category: (createNoticeData.category as any) || 'Placement',
-        status: statusToSet,
-        summary: createNoticeData.summary?.trim() || '',
-        issuedBy: createNoticeData.issuedBy?.trim() || 'Prof. S. Kulkarni (Admin / TPO)',
-        department: createNoticeData.department || 'Training & Placement (TPO)',
-        departmentKey: (createNoticeData.departmentKey as any) || 'tpo',
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        targetAudience: createNoticeData.targetAudience?.trim() || 'All Final Year Students',
-        academicYear: createNoticeData.academicYear || 'AY 2024-25',
-        isImportant: createNoticeData.isImportant || false,
-        isUrgent: createNoticeData.isUrgent || false,
-        actionRequired: createNoticeData.actionRequired || false,
-        actionDeadline: createNoticeData.actionDeadline?.trim() || undefined,
-        actionDescription: createNoticeData.actionDescription?.trim() || undefined,
-        attachments: createNoticeData.attachments || [],
-      };
-
-      setNotices((prev) => [newNotice, ...prev]);
-      setSelectedNoticeId(newNotice.id);
-      setCreateNoticeData(initialCreateNoticeState);
-      showToast(
-        statusToSet === 'Draft'
-          ? 'Notice saved as draft successfully.'
-          : 'Notice created and published successfully.'
-      );
-    }
+    if (!createNoticeData.summary?.trim() || !categoryId) { showToast('A category and description are required.'); return; }
+    setIsSaving(true); setRequestError(null);
+    try {
+      const payload = { title: createNoticeData.title.trim(), description: createNoticeData.summary.trim(), categoryId, isPinned: Boolean(createNoticeData.isImportant), attachmentIds: (createNoticeData.attachments || []).map(a => a.id).filter(Boolean) };
+      const isNewNotice = !editingNoticeId;
+      const result = await api<{ data: any }>(editingNoticeId ? `/notices/${editingNoticeId}` : '/notices', { method: editingNoticeId ? 'PUT' : 'POST', body: JSON.stringify(payload) }, token);
+      const saved = toAdminNotice(result.data);
+      if (isNewNotice) {
+        setFilters({ search: '', category: 'all', department: 'all', statusTab: 'all', dateFilter: undefined, selectedDate: undefined });
+        // The create response is authoritative. Put it at the front immediately
+        // so an intermittent follow-up list request cannot hide a successful save.
+        setNotices(previous => [saved, ...previous.filter(notice => notice.id !== saved.id)]);
+      } else {
+        // Edits retain the API's canonical pinned/newest-first list ordering.
+        await loadData();
+      }
+      setCurrentPage(1);
+      setSelectedNoticeId(saved.id);
+      setEditingNoticeId(null); setCreateNoticeData(initialCreateNoticeState); showToast(isNewNotice ? 'Notice created successfully.' : 'Notice updated successfully.');
+    } catch (err) { setRequestError(err instanceof Error ? err.message : 'Unable to save notice.'); return; }
+    finally { setIsSaving(false); }
 
     if (onNavigateTab) {
       onNavigateTab('dashboard');
@@ -431,12 +405,12 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
 
 
 
-  const processUploadedFiles = (files: FileList | File[]) => {
+  const processUploadedFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
-    const newAttachments: Array<{ name: string; size: string; type: 'pdf' | 'excel' | 'doc' | 'image' }> = [];
+    const newAttachments: Array<{ id?: string; name: string; size: string; type: 'pdf' | 'excel' | 'doc' | 'image' }> = [];
 
-    Array.from(files).forEach((file) => {
+    for (const file of Array.from(files)) {
       let fileType: 'pdf' | 'excel' | 'doc' | 'image' = 'pdf';
       const nameLower = file.name.toLowerCase();
       if (nameLower.endsWith('.xls') || nameLower.endsWith('.xlsx') || nameLower.endsWith('.csv')) {
@@ -457,19 +431,16 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
           ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
           : `${Math.round(file.size / 1024)} KB`;
 
-      newAttachments.push({
-        name: file.name,
-        size: sizeStr,
-        type: fileType,
-      });
-    });
+      try { const upload = await api<{ data: { id: string } }>('/upload', { method: 'POST', body: (() => { const form = new FormData(); form.append('file', file); return form; })() }, token); newAttachments.push({ id: upload.data.id, name: file.name, size: sizeStr, type: fileType }); }
+      catch (err) { setRequestError(err instanceof Error ? err.message : `Unable to upload ${file.name}.`); }
+    }
 
     setCreateNoticeData((prev) => ({
       ...prev,
       attachments: [...(prev.attachments || []), ...newAttachments],
     }));
 
-    showToast(`Uploaded ${newAttachments.length} document${newAttachments.length > 1 ? 's' : ''}`);
+    if (newAttachments.length) showToast(`Uploaded ${newAttachments.length} document${newAttachments.length > 1 ? 's' : ''}`);
   };
 
   const handleFileAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -510,6 +481,7 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
 
   return (
     <div className="w-full flex flex-col gap-5">
+      {(loading || requestError || isSaving) && <div role={requestError ? 'alert' : 'status'} className={`rounded-lg border p-3 text-sm ${requestError ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>{requestError || (isSaving ? 'Saving notice…' : 'Loading live notices…')}</div>}
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#00275a] text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 border border-[#d8e2ff]/30 animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -604,18 +576,12 @@ export const AdminNoticeWorkbench: React.FC<AdminNoticeWorkbenchProps> = ({
                     </label>
                     <div className="relative">
                       <select
-                        value={createNoticeData.category || 'Placement'}
-                        onChange={(e) =>
-                          setCreateNoticeData((prev) => ({ ...prev, category: e.target.value as any }))
-                        }
+                        value={categoryId}
+                        onChange={(e) => { const category = categories.find(item => item.id === e.target.value); setCategoryId(e.target.value); setCreateNoticeData(prev => ({ ...prev, category: (category?.name || '') as any })); }}
                         className="w-full px-3.5 py-2.5 bg-white text-[#1c1b1b] text-sm border border-[#e2e6ec] rounded-lg focus:border-[#003c84] focus:ring-1 focus:ring-[#003c84] focus:outline-none appearance-none cursor-pointer pr-8"
                       >
-                        <option value="Placement">Placement</option>
-                        <option value="Exam">Exam</option>
-                        <option value="Academic">Academic</option>
-                        <option value="Event">Event</option>
-                        <option value="Admin">Admin</option>
-                        <option value="General">General Notices</option>
+                        <option value="">Select a category</option>
+                        {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
                       </select>
                       <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-[#737782] text-[18px] pointer-events-none">
                         expand_more
